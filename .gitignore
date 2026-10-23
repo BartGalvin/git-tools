@@ -1,0 +1,17 @@
+# Keep local settings and generated files out of version control.
+*
+!.github/
+.github/*
+!.github/workflows/
+.github/workflows/*
+!.github/workflows/checks.yml
+!.gitignore
+!Makefile
+!README.md
+!gbinit
+!gitorigin.sh
+!remote.example.conf
+!tests/
+tests/*
+!tests/test_git_configuration.py
+!tests/test_scripts.py

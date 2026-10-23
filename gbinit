@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    printf 'Usage: %s [--branch BRANCH] [--config FILE] REPOSITORY\n' "${0##*/}"
+    printf 'Create a new bare repository. The default branch is main.\n'
+    printf 'The .git suffix is added when absent. Parent directories must exist.\n'
+    printf 'Optional Git INI config: [init] defaultBranch, [gbinit] directory.\n'
+    printf 'An explicit repository path overrides the configured base directory.\n'
+}
+
+branch=
+config=
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --branch|--config)
+            if [[ $# -lt 2 || -z $2 ]]; then
+                printf 'Error: %s requires a value.\n' "$1" >&2
+                exit 2
+            fi
+            case "$1" in
+                --branch) branch=$2 ;;
+                --config) config=$2 ;;
+            esac
+            shift 2
+            ;;
+        -h|--help) usage; exit 0 ;;
+        --) shift; break ;;
+        -*) printf 'Error: unknown option: %s\n' "$1" >&2; exit 2 ;;
+        *) break ;;
+    esac
+done
+if [[ $# -ne 1 || -z ${1:-} ]]; then
+    usage >&2
+    exit 2
+fi
+if ! command -v git >/dev/null 2>&1; then
+    printf 'Error: git is required.\n' >&2
+    exit 1
+fi
+
+base_directory=
+if [[ -n $config ]]; then
+    if [[ ! -f $config || ! -r $config ]] ||
+        ! git config --no-includes --file "$config" --list >/dev/null; then
+        printf 'Error: config must be a readable Git INI file: %s\n' "$config" >&2
+        exit 2
+    fi
+    if [[ -z $branch ]]; then
+        branch=$(git config --no-includes --file "$config" --get init.defaultBranch || :)
+    fi
+    base_directory=$(git config --no-includes --file "$config" --get gbinit.directory || :)
+fi
+branch=${branch:-main}
+if [[ $branch == '@{-'* ]] || ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
+    printf 'Error: invalid branch name: %s\n' "$branch" >&2
+    exit 2
+fi
+
+repository=$1
+while [[ $repository == */ ]]; do
+    repository=${repository%/}
+done
+case "$repository" in
+    ''|.|..|*/.|*/..)
+        printf 'Error: provide a repository name, not a parent directory.\n' >&2
+        exit 2
+        ;;
+    *.git) ;;
+    *) repository="$repository.git" ;;
+esac
+if [[ -n $base_directory && $repository != */* ]]; then
+    repository="$base_directory/$repository"
+fi
+if [[ -e $repository || -L $repository ]]; then
+    printf 'Error: destination already exists: %s\n' "$repository" >&2
+    exit 1
+fi
+mkdir -- "$repository"
+git init --bare --initial-branch="$branch" -- "$repository"
+printf 'Created bare repository: %q\n' "$repository"
